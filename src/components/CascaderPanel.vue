@@ -4,19 +4,27 @@
             <div v-for="(key, index) in options" :key="index" class="item-box" @click="activeIndex = index">
                 <div class="item-left">
                     <!-- TODO 需要修改为多选框，并实现未选中、已选中、半选中样式 -->
-                    <p v-if="hashObject[key.value]?.selectStatus === 0" class="unselect" @click="onSelect(key, index)">0</p>
-                    <p v-else-if="hashObject[key.value]?.selectStatus === 1" class="selected" @click="onUnselect(key, index)">1</p>
-                    <p v-else class="half-select" @click="onSelect(key, index)">2</p>
+                    <p v-if="hashObject[key.value]?.selectStatus === 0" class="unselect" @click="onSelect(key)">0</p>
+                    <p v-else-if="hashObject[key.value]?.selectStatus === 1" class="selected" @click="onUnselect(key)">1</p>
+                    <p v-else class="half-select" @click="onSelect(key)">2</p>
                     <p>{{ key.label }}</p>
                 </div>
-                <p v-if="key.children && key.children.length > 0" class="item-right">&gt;</p>
+                <p v-if="key[childrenField] && key[childrenField].length > 0" class="item-right">&gt;</p>
             </div>
         </div>
         <cascader-panel
-            v-if="activeIndex != null && options[activeIndex]?.children"
+            v-if="activeIndex != null && options[activeIndex] && options[activeIndex][childrenField]"
             ref="children"
+            :limit="limit"
             :level="level + 1"
-            :options="options[activeIndex].children"
+            :modelValue="modelValue"
+            :labelValue="labelValue"
+            :valueField="valueField"
+            :labelField="labelField"
+            :parentField="parentField"
+            :greaterLimit="greaterLimit"
+            :childrenField="childrenField"
+            :options="options[activeIndex][childrenField]"
             @update:modelValue="onChangeModelValue"
         ></cascader-panel>
     </div>
@@ -26,21 +34,61 @@
 import {onBeforeMount, ref} from "vue"
 
 const props = defineProps({
+    // 树形结构数据
     options: {
         type: Array<any>,
         required: true
     },
+    // 选中的值
     modelValue: {
         type: Array<Array<string>>,
         default: () => []
     },
+    // 选中的标签
+    labelValue: {
+        type: Array<string>,
+        default: () => []
+    },
+    // 最大可选数（按最后层级算）
+    limit: {
+        type: Number,
+        default: Infinity,
+        validator: (val: number) => val > 0
+    },
+    // 超过最大可选数后的行为（return：不做任何操作直接返回，overwrite：覆盖先选择的数据）
+    greaterLimit: {
+        type: String,
+        default: 'overwrite',
+        validator: (val: string) => ['return', 'overwrite'].includes(val)
+    },
+    // 树形结构中的值的字段名
+    valueField: {
+        type: String,
+        default: 'value'
+    },
+    // 树形结构中的父级id字段名
+    parentField: {
+        type: String,
+        default: 'dicPid'
+    },
+    // 树形结构中的标签字段名
+    labelField: {
+        type: String,
+        default: 'label'
+    },
+    // 树形结构中的子级字段名
+    childrenField: {
+        type: String,
+        default: 'children'
+    },
+    // 层级（请勿手动传该值）
     level: {
         type: Number,
         default: 1
     }
 })
 
-const emits = defineEmits(['update:modelValue', 'on-change'])
+const emits = defineEmits(['update:modelValue', 'update:labelValue', 'on-change'])
 
 const activeIndex = ref<number>(null)
 if (!window["__checkedHashObject__"]) {
@@ -59,8 +107,8 @@ onBeforeMount(() => {
     // 反选父级状态
     const parentSelect = (parentId: string) => {
         const parent = hashObject.value[parentId];
-        for (let i of parent.it.children) {
-            if (hashObject.value[i.value].selectStatus !== 1) {
+        for (let i of parent.it[props.childrenField]) {
+            if (hashObject.value[i[props.valueField]].selectStatus !== 1) {
                 hashObject.value[parentId].selectStatus = 2
                 return
             }
@@ -71,14 +119,14 @@ onBeforeMount(() => {
     const initHashObject = (options: Array<any>) => {
         for (let it of options) {
             let values: Array<any>
-            const parent = hashObject.value[it.dicPid]
-            const self = !!hashModelValue[it.value]
+            const parent = hashObject.value[it[props.parentField]]
+            const self = !!hashModelValue[it[props.valueField]]
             if (parent) {
-                values = [...parent.values, it.value]
-            } else if (it.dicPid) {
-                values = [it.dicPid, it.value]
+                values = [...parent.values, it[props.valueField]]
+            } else if (it[props.parentField]) {
+                values = [it[props.parentField], it[props.valueField]]
             } else {
-                values = [it.value]
+                values = [it[props.valueField]]
             }
             const selectObj = {
                 selectStatus: self ? 1 : 0,
@@ -86,9 +134,9 @@ onBeforeMount(() => {
                 values,
                 it
             }
-            hashObject.value[it.value] = selectObj
-            if (it.children && it.children.length > 0) {
-                initHashObject(it.children)
+            hashObject.value[it[props.valueField]] = selectObj
+            if (it[props.childrenField] && it[props.childrenField].length > 0) {
+                initHashObject(it[props.childrenField])
             } else {
                 selectObj.isLast = true
             }
@@ -98,13 +146,13 @@ onBeforeMount(() => {
     // 初始化父级状态
     const initSelectStatus = (options: Array<any>) => {
         for (let it of options) {
-            const parent = hashObject.value[it.dicPid]
-            const self = !!hashModelValue[it.value]
+            const parent = hashObject.value[it[props.parentField]]
+            const self = !!hashModelValue[it[props.valueField]]
             if (self && parent) {
-                parentSelect(it.dicPid)
+                parentSelect(it[props.parentField])
             }
-            if (it.children && it.children.length > 0) {
-                initSelectStatus(it.children)
+            if (it[props.childrenField] && it[props.childrenField].length > 0) {
+                initSelectStatus(it[props.childrenField])
             }
         }
     }
@@ -114,44 +162,68 @@ onBeforeMount(() => {
 /**
  * 选中事件
  * @param key   键
- * @param index 下标
  */
-const onSelect = (key: any, index: number) => {
-    hashObject.value[key.value].selectStatus = 1
-    if (key.children && key.children.length > 0) {
-        for (let it of key.children) {
-            onSelect(it, index)
+const onSelect = (key: any) => {
+    // 选中数大于等于最大可选数时的操作处理
+    if(props.modelValue.length >= props.limit) {
+        if (key[props.childrenField] && key[props.childrenField].length > 0) return
+        switch (props.greaterLimit) {
+            case 'return':
+                return
+            case 'overwrite':
+                let index = 0
+                let length = props.modelValue.length
+                do {
+                    const first = props.modelValue[index];
+                    onUnselect(hashObject.value[first[first.length - 1]].it)
+                    index++
+                    length--
+                } while (length >= props.limit)
+                break
+        }
+    }
+    hashObject.value[key[props.valueField]].selectStatus = 1
+    if (key[props.childrenField] && key[props.childrenField].length > 0) {
+        for (let it of key[props.childrenField]) {
+            onSelect(it)
         }
     }
     loopSelect(key)
     antiShake(onChangeModelValue)
 }
+/**
+ * 递归选中父级
+ * @param key 键
+ */
 const loopSelect = (key: any) => {
-    const parent = hashObject.value[key.dicPid];
+    const parent = hashObject.value[key[props.parentField]];
     if (parent) {
-        parent.selectStatus = parent.it.children.every((it: any) => hashObject.value[it.value].selectStatus === 1) ? 1 : 2
+        parent.selectStatus = parent.it[props.childrenField].every((it: any) => hashObject.value[it[props.valueField]].selectStatus === 1) ? 1 : 2
         loopSelect(parent.it)
     }
 }
 /**
  * 取消选中事件
- * @param key   键
- * @param index 下标
+ * @param key 键
  */
-const onUnselect = (key: any, index: number) => {
-    hashObject.value[key.value].selectStatus = 0
-    if (key.children && key.children.length > 0) {
-        for (let it of key.children) {
-            onUnselect(it, index)
+const onUnselect = (key: any) => {
+    hashObject.value[key[props.valueField]].selectStatus = 0
+    if (key[props.childrenField] && key[props.childrenField].length > 0) {
+        for (let it of key[props.childrenField]) {
+            onUnselect(it)
         }
     }
     loopUnselect(key)
     antiShake(onChangeModelValue)
 }
+/**
+ * 递归取消选中父级
+ * @param key 键
+ */
 const loopUnselect = (key: any) => {
-    const parent = hashObject.value[key.dicPid];
+    const parent = hashObject.value[key[props.parentField]];
     if (parent) {
-        hashObject.value[key.dicPid].selectStatus = parent.it.children.some((it: any) => hashObject.value[it.value].selectStatus !== 0) ? 2 : 0
+        hashObject.value[key[props.parentField]].selectStatus = parent.it[props.childrenField].some((it: any) => hashObject.value[it[props.valueField]].selectStatus !== 0) ? 2 : 0
         loopUnselect(parent.it)
     }
 }
@@ -169,17 +241,23 @@ const antiShake = (block: Function, delay: number = 100) => {
 }
 /**
  * 获取选中的值
+ * @param modelValue 选中的值
+ * @param labelValue 选中的标签
  */
-const onChangeModelValue = (result: Array<Array<string>> = []) => {
-    if (!result || !result.length) for (let key in hashObject.value) {
-        const it = hashObject.value[key]
-        if (it.selectStatus === 1 && it.isLast) {
-            result.push(it.values)
+const onChangeModelValue = (modelValue: Array<Array<string>> = [], labelValue: Array<string> = []) => {
+    if (!modelValue || !modelValue.length) {
+        for (let key in hashObject.value) {
+            const item = hashObject.value[key]
+            if (item.selectStatus === 1 && item.isLast) {
+                modelValue.push(item.values)
+                labelValue.push(item.it[props.labelField])
+            }
         }
     }
     // console.log('Cascader-Panel-Change', result)
-    emits('update:modelValue', result)
-    emits('on-change', result)
+    emits('update:modelValue', modelValue, labelValue)
+    emits('update:labelValue', labelValue)
+    emits('on-change', modelValue)
 }
 </script>
 
