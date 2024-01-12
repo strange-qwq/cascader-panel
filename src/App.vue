@@ -15,8 +15,12 @@
             <input v-model="limit" type="radio" :value="Infinity" @change="onRefresh" />多选-无限
         </label>
     </p>
-    <cascader-panel ref="panel" v-if="showPanel" v-model="value" :limit="limit" :options="options" @on-change="onChange"></cascader-panel>
-    <div style="border: 1px solid red"><p>{{ limit === 1 ? '单选' : '多选' }} value:</p>{{ value }}</div>
+    <cascader-panel ref="panel" v-if="showPanel" v-model="value" v-model:label-value="label" :limit="limit" :options="options" @on-change="onChange"></cascader-panel>
+    <div style="border: 1px solid red">
+        <p>当前模式： {{ limit === 1 ? '单选' : '多选' }}</p>
+        <p>label: {{ label }}</p>
+        <p>value: {{ value }}</p>
+    </div>
 </template>
 
 <script lang="ts" setup>
@@ -29,11 +33,13 @@ const showPanel = ref<boolean>(true);
 const msg = ref<string>('QWQ');
 const limit = ref<number>(Infinity);
 const value = ref<Array<any>>([[273000025, 273000030], [273000025, 273000028], [273000025, 273000040, 273000041]])
+const label = ref<Array<string>>([])
 const options = ref<Array<any>>(cascaderValue)
 
 const onRefresh = () => {
     showPanel.value = false
     value.value = []
+    label.value = []
     setTimeout(() => {
         showPanel.value = true
     }, 50)

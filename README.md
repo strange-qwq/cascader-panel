@@ -41,8 +41,6 @@
 
 组件样式使用scss编写，需要注意引入scss插件，你也可以修改为css版本
 
-需要修改`cascader-panel`组件的第7、8、9行为多选框，并实现未选中（class=unselect）、已选中（class=selected）、半选中（class=half-select）样式
-
 ！！！请勿手动传入level属性，该属性为组件内部使用，传入后可能会导致组件无法正常工作！！！
 
 ## 数据示例：

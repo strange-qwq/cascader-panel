@@ -1,12 +1,16 @@
 <template>
-    <div class="cascader-panel">
+    <div v-if="options && hashObject" class="cascader-panel">
         <div class="cascader-panel-box">
             <div v-for="(key, index) in options" :key="index" class="item-box" @click="activeIndex = index">
                 <div class="item-left">
-                    <!-- TODO 需要修改为多选框，并实现未选中、已选中、半选中样式 -->
-                    <p v-if="hashObject[key.value]?.selectStatus === 0" class="unselect" @click="onSelect(key)">0</p>
-                    <p v-else-if="hashObject[key.value]?.selectStatus === 1" class="selected" @click="onUnselect(key)">1</p>
-                    <p v-else class="half-select" @click="onSelect(key)">2</p>
+                    <!--suppress HtmlUnknownAttribute -->
+                    <input
+                        v-if="limit === Infinity || hashObject[key.value].isLast"
+                        type="checkbox"
+                        :checked="hashObject[key.value].selectStatus === 1"
+                        :indeterminate="hashObject[key.value].selectStatus === 2"
+                        @click="hashObject[key.value].selectStatus === 1 ? onUnselect(key) : onSelect(key)"
+                    />
                     <p>{{ key.label }}</p>
                 </div>
                 <p v-if="key[childrenField] && key[childrenField].length > 0" class="item-right">&gt;</p>
@@ -17,21 +21,20 @@
             ref="children"
             :limit="limit"
             :level="level + 1"
-            :modelValue="modelValue"
-            :labelValue="labelValue"
+            v-model:modelValue="__modelValue"
+            v-model:labelValue="__labelValue"
             :valueField="valueField"
             :labelField="labelField"
             :parentField="parentField"
             :greaterLimit="greaterLimit"
             :childrenField="childrenField"
             :options="options[activeIndex][childrenField]"
-            @update:modelValue="onChangeModelValue"
         ></cascader-panel>
     </div>
 </template>
 
 <script lang="ts" setup>
-import {onBeforeMount, ref} from "vue"
+import {onBeforeMount, ref, watch} from "vue"
 
 const props = defineProps({
     // 树形结构数据
@@ -88,15 +91,27 @@ const props = defineProps({
     }
 })
 
-const emits = defineEmits(['update:modelValue', 'update:labelValue', 'on-change'])
+const emits = defineEmits(['update:modelValue', 'update:labelValue', 'change'])
 
-const activeIndex = ref<number>(null)
+const activeIndex = ref<number|null>(null)
+const __modelValue = ref<Array<Array<string>>>([])
+const __labelValue = ref<Array<string>>([])
 if (!window["__checkedHashObject__"]) {
     window["__checkedHashObject__"] = ref<any>({})
 }
 const hashObject = window["__checkedHashObject__"]
 
+watch(() => __modelValue.value, (val) => {
+    emits('update:modelValue', val)
+    emits('change', val)
+}, { deep: true })
+
+watch(() => __labelValue.value, (val) => {
+    emits('update:labelValue', val)
+}, { deep: true })
+
 onBeforeMount(() => {
+    __modelValue.value = props.modelValue
     // 仅第一层初始化
     if (props.level !== 1) return
     // 获取所有已选中的最后一层
@@ -140,6 +155,9 @@ onBeforeMount(() => {
             } else {
                 selectObj.isLast = true
             }
+            if(self) {
+                __labelValue.value.push(it[props.labelField])
+            }
         }
     }
     initHashObject(props.options)
@@ -161,35 +179,34 @@ onBeforeMount(() => {
 
 /**
  * 选中事件
- * @param key   键
+ * @param key    键
+ * @param length 选中的总个数
  */
-const onSelect = (key: any) => {
+const onSelect = (key: any, length: number = __modelValue.value.length) => {
     // 选中数大于等于最大可选数时的操作处理
-    if(props.modelValue.length >= props.limit) {
+    if(__modelValue.value.length >= props.limit) {
         if (key[props.childrenField] && key[props.childrenField].length > 0) return
         switch (props.greaterLimit) {
             case 'return':
                 return
             case 'overwrite':
-                let index = 0
-                let length = props.modelValue.length
                 do {
-                    const first = props.modelValue[index];
+                    const first = __modelValue.value[0]
                     onUnselect(hashObject.value[first[first.length - 1]].it)
-                    index++
-                    length--
-                } while (length >= props.limit)
+                    __modelValue.value.shift()
+                } while (__modelValue.value.length >= props.limit)
                 break
         }
     }
     hashObject.value[key[props.valueField]].selectStatus = 1
     if (key[props.childrenField] && key[props.childrenField].length > 0) {
         for (let it of key[props.childrenField]) {
-            onSelect(it)
+            onSelect(it, length)
+            if(++length >= props.limit) break
         }
     }
     loopSelect(key)
-    antiShake(onChangeModelValue)
+    antiShake(buildModelValue)
 }
 /**
  * 递归选中父级
@@ -214,7 +231,7 @@ const onUnselect = (key: any) => {
         }
     }
     loopUnselect(key)
-    antiShake(onChangeModelValue)
+    antiShake(buildModelValue)
 }
 /**
  * 递归取消选中父级
@@ -240,24 +257,18 @@ const antiShake = (block: Function, delay: number = 100) => {
     }, delay)
 }
 /**
- * 获取选中的值
- * @param modelValue 选中的值
- * @param labelValue 选中的标签
+ * 修改事件
  */
-const onChangeModelValue = (modelValue: Array<Array<string>> = [], labelValue: Array<string> = []) => {
-    if (!modelValue || !modelValue.length) {
-        for (let key in hashObject.value) {
-            const item = hashObject.value[key]
-            if (item.selectStatus === 1 && item.isLast) {
-                modelValue.push(item.values)
-                labelValue.push(item.it[props.labelField])
-            }
+const buildModelValue = () => {
+    __modelValue.value = []
+    __labelValue.value = []
+    for (let key in hashObject.value) {
+        const item = hashObject.value[key]
+        if (item.selectStatus === 1 && item.isLast) {
+            __modelValue.value.push(item.values)
+            __labelValue.value.push(item.it[props.labelField])
         }
     }
-    // console.log('Cascader-Panel-Change', result)
-    emits('update:modelValue', modelValue, labelValue)
-    emits('update:labelValue', labelValue)
-    emits('on-change', modelValue)
 }
 </script>
 
