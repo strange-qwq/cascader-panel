@@ -119,17 +119,6 @@ onBeforeMount(() => {
     for (let it of props.modelValue) {
         hashModelValue[it[it.length - 1]] = true
     }
-    // 反选父级状态
-    const parentSelect = (parentId: string) => {
-        const parent = hashObject.value[parentId];
-        for (let i of parent.it[props.childrenField]) {
-            if (hashObject.value[i[props.valueField]].selectStatus !== 1) {
-                hashObject.value[parentId].selectStatus = 2
-                return
-            }
-        }
-        hashObject.value[parentId].selectStatus = 1
-    }
     // 初始化hashObject
     const initHashObject = (options: Array<any>) => {
         for (let it of options) {
@@ -143,17 +132,14 @@ onBeforeMount(() => {
             } else {
                 values = [it[props.valueField]]
             }
-            const selectObj = {
+            hashObject.value[it[props.valueField]] = {
                 selectStatus: self ? 1 : 0,
-                isLast: false,
+                isLast: self,
                 values,
                 it
             }
-            hashObject.value[it[props.valueField]] = selectObj
             if (it[props.childrenField] && it[props.childrenField].length > 0) {
                 initHashObject(it[props.childrenField])
-            } else {
-                selectObj.isLast = true
             }
             if(self) {
                 __labelValue.value.push(it[props.labelField])
@@ -161,26 +147,15 @@ onBeforeMount(() => {
         }
     }
     initHashObject(props.options)
-    // 初始化父级状态
-    const initSelectStatus = (options: Array<any>) => {
-        for (let it of options) {
-            const parent = hashObject.value[it[props.parentField]]
-            const self = !!hashModelValue[it[props.valueField]]
-            if (self && parent) {
-                parentSelect(it[props.parentField])
-            }
-            if (it[props.childrenField] && it[props.childrenField].length > 0) {
-                initSelectStatus(it[props.childrenField])
-            }
-        }
+    for (let key in hashModelValue) {
+        loopSelect(hashObject.value[key].it)
     }
-    initSelectStatus(props.options)
 })
 
 /**
  * 选中事件
  * @param key    键
- * @param length 选中的总个数
+ * @param length 选中的总个数（默认值为__modelValue的长度）
  */
 const onSelect = (key: any, length: number = __modelValue.value.length) => {
     // 选中数大于等于最大可选数时的操作处理
@@ -245,9 +220,9 @@ const loopUnselect = (key: any) => {
     }
 }
 /**
- * 防抖（解决多次触发 onChangeModelValue 事件的问题）
+ * 防抖（解决多次触发onChangeModelValue事件的问题）
  * @param block 函数
- * @param delay 延迟时间
+ * @param delay 延迟时间（默认值为100毫秒）
  */
 const antiShake = (block: Function, delay: number = 100) => {
     window["__timer__"] && clearTimeout(window["__timer__"])
@@ -270,6 +245,21 @@ const buildModelValue = () => {
         }
     }
 }
+/**
+ * 刷新事件（需手动触发，触发后会根据 props.modelValue 重新选择）
+ */
+const onRefresh = () => {
+    for (let key in hashObject.value) {
+        hashObject.value[key].selectStatus = 0
+    }
+    for (let it of props.modelValue) {
+        onSelect(hashObject.value[it[it.length - 1]].it)
+    }
+}
+
+defineExpose({
+    onRefresh
+})
 </script>
 
 <style lang="scss" scoped>
