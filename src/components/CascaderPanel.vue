@@ -11,7 +11,7 @@
                         :indeterminate="hashObject[key.value].selectStatus === 2"
                         @click="hashObject[key.value].selectStatus === 1 ? onUnselect(key) : onSelect(key)"
                     />
-                    <p>{{ key.label }}</p>
+                    <p>{{ key[labelField] }}</p>
                 </div>
                 <p v-if="key[childrenField] && key[childrenField].length > 0" class="item-right">&gt;</p>
             </div>
@@ -132,13 +132,14 @@ onBeforeMount(() => {
             } else {
                 values = [it[props.valueField]]
             }
+            const hasChildren: boolean = it[props.childrenField] && it[props.childrenField].length > 0;
             hashObject.value[it[props.valueField]] = {
                 selectStatus: self ? 1 : 0,
-                isLast: self,
+                isLast: !hasChildren,
                 values,
                 it
             }
-            if (it[props.childrenField] && it[props.childrenField].length > 0) {
+            if (hasChildren) {
                 initHashObject(it[props.childrenField])
             }
             if(self) {
